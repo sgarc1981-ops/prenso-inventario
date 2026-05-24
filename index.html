@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventario Prenso Composites</title>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { margin: 0; padding: 20px; background: #f4f7fb; color: #222; }
+    .container {
+      width: 200%; max-width: 1400px; margin: 0 auto;
+      background: #fff; padding: 0 20px 20px;
+      border-radius: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.08);
+    }
+    .header {
+      width: 100%; padding: 14px 0 10px;
+      border-bottom: 1px solid #e5e7eb; margin-bottom: 18px;
+      display: flex; align-items: center; gap: 18px;
+    }
+    .logo { width: 11%; height: auto; display: block; object-fit: contain; border-radius: 8px; flex-shrink: 0; }
+    h1 { margin: 16px 0 8px; }
+    .subtitle { margin-top: 0; color: #475569; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px; }
+    label { display: block; font-weight: 700; margin-bottom: 6px; }
+    input, select, button { width: 100%; padding: 12px; border: 1px solid #cfd8e3; border-radius: 10px; font-size: 15px; }
+
+    /* ── Acciones ── */
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 18px; }
+    .actions button { width: auto; min-width: 140px; cursor: pointer; border: none; color: #fff; }
+    .btn-in     { background: #16a34a; }
+    .btn-out    { background: #dc2626; }
+    .btn-clear  { background: #334155; }
+    .btn-export { background: #2563eb; }
+    .btn-delete { background: #7c3aed; }
+    .btn-add    { background: #0ea5a4; }
+    .btn-albaran { background: #ea580c; }
+
+    /* ── Deshacer ── */
+    #btnUndo {
+      display: none; align-items: center; gap: 8px;
+      background: #f59e0b; color: #fff; border: none; border-radius: 10px;
+      padding: 10px 16px; font-size: 15px; font-weight: 700; cursor: pointer;
+      min-width: 140px; transition: background .2s, transform .1s;
+    }
+    #btnUndo:hover { background: #d97706; }
+    #btnUndo:active { transform: scale(.97); }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 28px; left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: #1e293b; color: #fff;
+      padding: 12px 22px; border-radius: 12px;
+      font-size: 14px; font-weight: 600;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s, transform .3s;
+      z-index: 9999; max-width: 90vw; text-align: center;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    .filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin: 14px 0 8px; }
+
+    /* ── Stock ── */
+    .stock-box { margin-top: 18px; padding: 14px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 12px; }
+    .stock-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid #dbeafe; }
+    .stock-item:last-child { border-bottom: none; }
+    .stock-nombre { cursor: pointer; color: #1d4ed8; text-decoration: underline dotted; font-weight: 600; transition: color .15s; }
+    .stock-nombre:hover { color: #1e40af; }
+    .stock-cantidad { background: #1d4ed8; color: #fff; border-radius: 999px; padding: 2px 10px; font-size: 13px; font-weight: 700; margin-left: auto; white-space: nowrap; }
+    .stock-item.sin-stock { background: #fff1f2; border-radius: 8px; padding: 6px 8px; border-bottom: 1px solid #fecdd3; }
+    .stock-item.sin-stock .stock-nombre { color: #b91c1c; }
+    .stock-item.sin-stock .stock-cantidad { background: #dc2626; }
+    .stock-item.sin-stock::after { content: "⚠ Sin stock"; font-size: 11px; font-weight: 700; color: #dc2626; background: #fee2e2; border: 1px solid #fca5a5; border-radius: 6px; padding: 1px 7px; margin-left: 8px; }
+    #btnNotificar { display: none; margin-top: 12px; background: #dc2626; color: #fff; border: none; border-radius: 10px; padding: 10px 18px; font-size: 14px; font-weight: 700; cursor: pointer; gap: 6px; align-items: center; }
+    #btnNotificar:hover { background: #b91c1c; }
+
+    /* ── Tabla ── */
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; border-radius: 12px; overflow: hidden; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 12px; text-align: left; }
+    th { background: #0f172a; color: white; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; color: white; font-size: 13px; font-weight: 700; }
+    .in  { background: #16a34a; }
+    .out { background: #dc2626; }
+    .hidden-row { display: none; }
+
+    /* ── Modales ── */
+    .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background: rgba(0,0,0,.4); }
+    .modal-content { background: #fff; margin: 6% auto; padding: 24px; border-radius: 12px; max-width: 520px; box-shadow: 0 8px 24px rgba(0,0,0,.2); }
+    .modal-content.wide { max-width: 680px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .close { cursor: pointer; font-size: 22px; background: #ef4444; color: #fff; border: none; padding: 6px 10px; border-radius: 8px; }
+    .form-row { margin-bottom: 12px; position: relative; }
+    select.material-list { min-height: 180px; }
+
+    /* ── Autocomplete proveedor ── */
+    .autocomplete-list {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 200;
+      background: #fff; border: 1px solid #cbd5e1; border-top: none;
+      border-radius: 0 0 10px 10px; max-height: 180px; overflow-y: auto;
+      box-shadow: 0 4px 12px rgba(0,0,0,.1);
+    }
+    .autocomplete-item {
+      padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom: 1px solid #f1f5f9;
+    }
+    .autocomplete-item:hover { background: #eff6ff; color: #1d4ed8; }
+    .autocomplete-item:last-child { border-bottom: none; }
+    .autocomplete-item mark { background: #fef3c7; border-radius: 2px; font-style: normal; }
+
+    /* ── Modal deshacer ── */
+    #modalUndo .modal-content { border-top: 5px solid #f59e0b; }
+    .undo-detalle { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px; margin: 10px 0 16px; font-size: 14px; line-height: 1.6; color: #374151; }
+    .undo-detalle strong { color: #92400e; }
+
+    /* ── Modal albarán ── */
+    #modalAlbaran .modal-content { border-top: 5px solid #ea580c; }
+    .drop-zone {
+      border: 2px dashed #cbd5e1; border-radius: 12px;
+      padding: 32px; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s; color: #64748b;
+      background: #f8fafc; margin-bottom: 14px;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #ea580c; background: #fff7ed; color: #c2410c; }
+    .drop-zone .drop-icon { font-size: 40px; margin-bottom: 8px; }
+    .drop-zone p { margin: 4px 0; font-size: 14px; }
+    #inputFotoAlbaran { display: none; }
+
+    /* Preview imagen */
+    #previewAlbaran { max-width: 100%; max-height: 220px; border-radius: 8px; display: none; margin: 0 auto 14px; }
+
+    /* Estado análisis */
+    .analisis-estado { text-align: center; padding: 16px; color: #475569; font-size: 14px; }
+    .spinner { display: inline-block; width: 24px; height: 24px; border: 3px solid #e2e8f0; border-top-color: #ea580c; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Tabla resultado albarán */
+    .albaran-tabla { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+    .albaran-tabla th { background: #0f172a; color: #fff; padding: 8px 10px; text-align: left; }
+    .albaran-tabla td { padding: 8px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: middle; }
+    .albaran-tabla input[type=number] { padding: 6px 8px; font-size: 14px; width: 80px; }
+    .albaran-tabla input[type=checkbox] { width: auto; }
+    .albaran-fila-nocoincide td { background: #fefce8; }
+    .tag-nocoincide { font-size: 11px; background: #fef3c7; border: 1px solid #fde68a; color: #92400e; border-radius: 6px; padding: 1px 6px; margin-left: 4px; }
+    .albaran-info { background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 12px; color: #7c2d12; }
+
+    @media (max-width: 560px) {
+      .actions button { min-width: 120px; }
+      .modal-content { margin: 10% auto; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <img src="1000011332.jpeg" alt="Logotipo Prenso" class="logo" />
+  </div>
+
+  <h1>Inventario Prenso Composites</h1>
+  <p class="subtitle">Control de entradas y salidas de material por empleado.</p>
+
+  <div class="grid">
+    <div>
+      <label for="empleado">Empleado</label>
+      <select id="empleado">
+        <option value="">Selecciona un empleado</option>
+        <option value="Álex">Álex</option>
+        <option value="Sergio">Sergio</option>
+        <option value="Jesús">Jesús</option>
+        <option value="Jordi">Jordi</option>
+        <option value="Mónica">Mónica</option>
+        <option value="Henna">Henna</option>
+        <option value="Eric">Eric</option>
+        <option value="Raúl">Raúl</option>
+        <option value="Isabel">Isabel</option>
+        <option value="Nacho">Nacho</option>
+        <option value="Anastasia">Anastasia</option>
+        <option value="Invitado">Invitado</option>
+      </select>
+    </div>
+    <div>
+      <label for="fecha">Fecha</label>
+      <input type="date" id="fecha" />
+    </div>
+    <div>
+      <label for="pieza">Pieza / Material</label>
+      <select id="pieza" class="material-list" size="6"></select>
+    </div>
+    <div>
+      <label for="cantidad">Cantidad</label>
+      <input type="number" id="cantidad" min="1" placeholder="Cantidad" />
+    </div>
+  </div>
+
+  <div class="actions">
+    <button class="btn-in"      onclick="registrarMovimiento('entrada')">Entrar material</button>
+    <button class="btn-out"     onclick="registrarMovimiento('salida')">Sacar material</button>
+    <button class="btn-add"     onclick="abrirModalArticulo()">Añadir artículo</button>
+    <button class="btn-delete"  onclick="borrarArticulo()">Borrar artículo</button>
+    <button class="btn-albaran" onclick="abrirModalAlbaran()">📷 Leer albarán</button>
+    <button class="btn-clear"   onclick="limpiarCampos()">Limpiar</button>
+    <button class="btn-export"  onclick="exportarExcel()">Exportar a Excel</button>
+    <button id="btnUndo"        onclick="abrirModalUndo()">↩ Deshacer</button>
+  </div>
+
+  <div class="filters">
+    <div>
+      <label for="buscar">Buscar movimientos</label>
+      <input type="text" id="buscar" placeholder="Busca por empleado, pieza, fecha o movimiento" oninput="filtrarTabla()" />
+    </div>
+  </div>
+
+  <div class="stock-box">
+    <strong>Stock actual por pieza:</strong>
+    <div id="stockResumen"></div>
+    <button id="btnNotificar" onclick="notificarSupervisor()">📧 Notificar falta de stock al supervisor</button>
+  </div>
+
+  <table id="tablaExportable">
+    <thead>
+      <tr>
+        <th>Fecha</th><th>Empleado</th><th>Movimiento</th>
+        <th>Pieza</th><th>Cantidad</th><th>Stock resultante</th><th>Proveedor</th>
+      </tr>
+    </thead>
+    <tbody id="tablaMovimientos"></tbody>
+  </table>
+</div>
+
+<div id="toast"></div>
+
+<!-- ══ Modal: Añadir artículo ══ -->
+<div id="modalArticulo" class="modal" aria-hidden="true">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Añadir artículo nuevo</h3>
+      <button class="close" onclick="cerrarModal('modalArticulo')">X</button>
+    </div>
+    <div class="form-row">
+      <label for="nuevoNombre">Nombre completo del artículo</label>
+      <input id="nuevoNombre" type="text" placeholder="Ej: Resina epoxi 1kg" />
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button style="flex:1;background:#0ea5a4;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="confirmarAddArticulo()">Añadir</button>
+      <button style="flex:1;background:#94a3b8;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="cerrarModal('modalArticulo')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal: Proveedor entrada manual ══ -->
+<div id="modalProveedor" class="modal" aria-hidden="true">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Entrada de stock — Proveedor</h3>
+      <button class="close" onclick="cerrarModalProveedor()">X</button>
+    </div>
+    <p style="margin:0 0 12px;color:#475569;font-size:14px;">Indica de dónde proviene este stock para dejarlo registrado en el historial.</p>
+    <div class="form-row" style="position:relative;">
+      <label for="inputProveedor">Proveedor</label>
+      <input id="inputProveedor" type="text" placeholder="Escribe o elige un proveedor existente…"
+             oninput="filtrarAutocomplete()" onkeydown="teclaAutocomplete(event)" autocomplete="off" />
+      <div id="autocompleteList" class="autocomplete-list" style="display:none;"></div>
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button style="flex:1;background:#16a34a;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="confirmarEntrada()">Confirmar entrada</button>
+      <button style="flex:1;background:#94a3b8;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="cerrarModalProveedor()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal: Editar nombre artículo ══ -->
+<div id="modalEditar" class="modal" aria-hidden="true">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Editar artículo</h3>
+      <button class="close" onclick="cerrarModal('modalEditar')">X</button>
+    </div>
+    <div class="form-row">
+      <label for="editarNombre">Nuevo nombre del artículo</label>
+      <input id="editarNombre" type="text" />
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button style="flex:1;background:#0ea5a4;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="confirmarEditar()">Guardar cambios</button>
+      <button style="flex:1;background:#94a3b8;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="cerrarModal('modalEditar')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal: Deshacer ══ -->
+<div id="modalUndo" class="modal" aria-hidden="true">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>↩ Deshacer última acción</h3>
+      <button class="close" onclick="cerrarModal('modalUndo')">X</button>
+    </div>
+    <p style="margin:0 0 4px;color:#475569;font-size:14px;">Se va a revertir la siguiente acción:</p>
+    <div class="undo-detalle" id="undoDetalle"></div>
+    <div style="display:flex;gap:10px;">
+      <button style="flex:1;background:#f59e0b;color:#fff;border:none;padding:10px;border-radius:8px;font-weight:700;" onclick="ejecutarUndo()">↩ Confirmar deshacer</button>
+      <button style="flex:1;background:#94a3b8;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="cerrarModal('modalUndo')">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ Modal: Lector albarán ══ -->
+<div id="modalAlbaran" class="modal" aria-hidden="true">
+  <div class="modal-content wide">
+    <div class="modal-header">
+      <h3>📷 Leer albarán con IA</h3>
+      <button class="close" onclick="cerrarModalAlbaran()">X</button>
+    </div>
+
+    <!-- PASO 1: subida -->
+    <div id="pasoSubida">
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('inputFotoAlbaran').click()"
+           ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           ondrop="onDropAlbaran(event)">
+        <div class="drop-icon">📄</div>
+        <p><strong>Haz clic o arrastra aquí</strong> la foto del albarán</p>
+        <p>JPG, PNG, WEBP — máx. 10 MB</p>
+      </div>
+      <input type="file" id="inputFotoAlbaran" accept="image/*" onchange="onSeleccionarFoto(event)" />
+      <img id="previewAlbaran" alt="Vista previa del albarán" />
+      <div style="display:flex;gap:10px;margin-top:6px;">
+        <button id="btnAnalizarAlbaran" style="flex:1;background:#ea580c;color:#fff;border:none;padding:10px;border-radius:8px;font-weight:700;display:none;" onclick="analizarAlbaran()">🔍 Analizar albarán</button>
+      </div>
+    </div>
+
+    <!-- PASO 2: análisis en curso -->
+    <div id="pasoAnalizando" style="display:none;">
+      <div class="analisis-estado">
+        <span class="spinner"></span> La IA está leyendo el albarán, un momento…
+      </div>
+    </div>
+
+    <!-- PASO 3: resultados -->
+    <div id="pasoResultados" style="display:none;">
+      <div class="albaran-info" id="albaranInfo"></div>
+      <p style="font-size:13px;color:#475569;margin:0 0 8px;">
+        Revisa los artículos detectados. Los marcados en amarillo no coinciden exactamente con tus referencias — puedes editarlos o desmarcarlos.
+      </p>
+      <div style="max-height:280px;overflow-y:auto;">
+        <table class="albaran-tabla">
+          <thead><tr><th>✓</th><th>Artículo detectado</th><th>Cantidad</th><th>Estado</th></tr></thead>
+          <tbody id="albaranFilas"></tbody>
+        </table>
+      </div>
+      <div class="form-row" style="margin-top:14px;">
+        <label for="albaranProveedor">Proveedor del albarán</label>
+        <div style="position:relative;">
+          <input id="albaranProveedor" type="text" placeholder="Nombre del proveedor…"
+                 oninput="filtrarAutocompleteAlbaran()" onkeydown="teclaAutocompleteAlbaran(event)" autocomplete="off" />
+          <div id="autocompleteAlbaranList" class="autocomplete-list" style="display:none;"></div>
+        </div>
+      </div>
+      <div class="form-row">
+        <label for="albaranEmpleado">Empleado que recibe</label>
+        <select id="albaranEmpleado">
+          <option value="">Selecciona empleado</option>
+          <option value="Álex">Álex</option><option value="Sergio">Sergio</option>
+          <option value="Jesús">Jesús</option><option value="Jordi">Jordi</option>
+          <option value="Mónica">Mónica</option><option value="Henna">Henna</option>
+          <option value="Eric">Eric</option><option value="Raúl">Raúl</option>
+          <option value="Isabel">Isabel</option><option value="Nacho">Nacho</option>
+          <option value="Anastasia">Anastasia</option><option value="Invitado">Invitado</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label for="albaranFecha">Fecha del albarán</label>
+        <input type="date" id="albaranFecha" />
+      </div>
+      <div style="display:flex;gap:10px;margin-top:4px;">
+        <button style="flex:1;background:#16a34a;color:#fff;border:none;padding:10px;border-radius:8px;font-weight:700;" onclick="importarAlbaran()">✅ Importar entradas seleccionadas</button>
+        <button style="flex:1;background:#94a3b8;color:#fff;border:none;padding:10px;border-radius:8px;" onclick="cerrarModalAlbaran()">Cancelar</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  DATOS REFERENCIA
+// ══════════════════════════════════════════════════════════════
+const CATEGORIAS = {
+  "EPIs": [
+    "Guantes de Nitrilo - Talla S","Guantes de Nitrilo - Talla M",
+    "Guantes de Nitrilo - Talla L","Guantes de Nitrilo - Talla XL",
+    "Guantes de Piel Flor - Talla 8/M","Guantes de Piel Flor - Talla 9/L","Guantes de Piel Flor - Talla 10/XL",
+    "Guantes Mixtos Cutter/Poliuretano - Talla 7/S","Guantes Mixtos Cutter/Poliuretano - Talla 8/M",
+    "Guantes Mixtos Cutter/Poliuretano - Talla 9/L","Guantes Mixtos Cutter/Poliuretano - Talla 10/XL",
+    "Mascarillas de protección (filtros vapores orgánicos y polvo)",
+    "Tapones auditivos","Monos de protección desechables"
+  ],
+  "Material de Taller, Lijado y Limpieza": [
+    "Discos de lija (diferentes granos para acabados)","Cinta de carrocero / enmascarar",
+    "Trapos y rollos de papel industrial","Acetona / Disolventes de limpieza",
+    "Vasos de mezcla calibrados (desechables)","Depresores / Agitadores (madera o plástico)"
+  ],
+  "Consumibles de Aplicación y Vacío (Laminado)": [
+    "Brochas y rodillos de aplicación (desaireadores teflón/aluminio)",
+    "Manta de absorción (Bleeder/Breather)",
+    "Film de desmoldeo perforado","Film de desmoldeo no perforado",
+    "Tejido pelable (Peel Ply)","Cinta de estanqueidad (masilla bolsa de vacío)"
+  ]
+};
+function buildDefaultStock() {
+  const s = {};
+  Object.values(CATEGORIAS).forEach(items => items.forEach(i => s[i] = 0));
+  return s;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  ESTADO
+// ══════════════════════════════════════════════════════════════
+let movimientos = JSON.parse(localStorage.getItem("movimientosInventario")) || [];
+let stock       = JSON.parse(localStorage.getItem("stockInventario"))       || buildDefaultStock();
+let pilaUndo    = JSON.parse(localStorage.getItem("pilaUndo"))              || [];
+let entradaPendiente = null;
+let articuloEditando = null;
+let fotoAlbaranBase64 = null;
+
+document.getElementById("fecha").valueAsDate = new Date();
+document.getElementById("albaranFecha").valueAsDate = new Date();
+
+// ══════════════════════════════════════════════════════════════
+//  PROVEEDORES CONOCIDOS (extraídos de movimientos)
+// ══════════════════════════════════════════════════════════════
+function getProveedoresConocidos() {
+  const set = new Set();
+  movimientos.forEach(m => { if (m.proveedor && m.proveedor !== "Sin proveedor") set.add(m.proveedor); });
+  return [...set].sort();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PERSISTENCIA
+// ══════════════════════════════════════════════════════════════
+function guardarDatos() {
+  localStorage.setItem("movimientosInventario", JSON.stringify(movimientos));
+  localStorage.setItem("stockInventario",       JSON.stringify(stock));
+  localStorage.setItem("pilaUndo",              JSON.stringify(pilaUndo));
+}
+
+// ══════════════════════════════════════════════════════════════
+//  AUTOCOMPLETE PROVEEDOR (entrada manual)
+// ══════════════════════════════════════════════════════════════
+function filtrarAutocomplete() {
+  const val = document.getElementById("inputProveedor").value.trim().toLowerCase();
+  const lista = document.getElementById("autocompleteList");
+  const proveedores = getProveedoresConocidos();
+  const filtrados = val ? proveedores.filter(p => p.toLowerCase().includes(val)) : proveedores;
+  renderAutocomplete(lista, filtrados, val, (p) => {
+    document.getElementById("inputProveedor").value = p;
+    lista.style.display = "none";
+  });
+}
+function teclaAutocomplete(e) {
+  navegarAutocomplete(e, document.getElementById("autocompleteList"), (p) => {
+    document.getElementById("inputProveedor").value = p;
+    document.getElementById("autocompleteList").style.display = "none";
+  });
+}
+
+// AUTOCOMPLETE PROVEEDOR (albarán)
+function filtrarAutocompleteAlbaran() {
+  const val = document.getElementById("albaranProveedor").value.trim().toLowerCase();
+  const lista = document.getElementById("autocompleteAlbaranList");
+  const proveedores = getProveedoresConocidos();
+  const filtrados = val ? proveedores.filter(p => p.toLowerCase().includes(val)) : proveedores;
+  renderAutocomplete(lista, filtrados, val, (p) => {
+    document.getElementById("albaranProveedor").value = p;
+    lista.style.display = "none";
+  });
+}
+function teclaAutocompleteAlbaran(e) {
+  navegarAutocomplete(e, document.getElementById("autocompleteAlbaranList"), (p) => {
+    document.getElementById("albaranProveedor").value = p;
+    document.getElementById("autocompleteAlbaranList").style.display = "none";
+  });
+}
+
+function renderAutocomplete(lista, items, query, onSelect) {
+  if (items.length === 0) { lista.style.display = "none"; return; }
+  lista.innerHTML = items.map(p => {
+    const idx = p.toLowerCase().indexOf(query);
+    const highlighted = idx >= 0 && query
+      ? p.slice(0,idx) + "<mark>" + p.slice(idx, idx+query.length) + "</mark>" + p.slice(idx+query.length)
+      : p;
+    return `<div class="autocomplete-item" onmousedown="event.preventDefault()" onclick="(${onSelect.toString()})('${p.replace(/'/g,"\\'")}')">🏭 ${highlighted}</div>`;
+  }).join("");
+  lista.style.display = "block";
+}
+
+function navegarAutocomplete(e, lista, onSelect) {
+  const items = lista.querySelectorAll(".autocomplete-item");
+  let idx = [...items].findIndex(i => i.classList.contains("active"));
+  if (e.key === "ArrowDown") {
+    e.preventDefault();
+    items.forEach(i => i.classList.remove("active"));
+    idx = Math.min(idx + 1, items.length - 1);
+    if (items[idx]) items[idx].classList.add("active");
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    items.forEach(i => i.classList.remove("active"));
+    idx = Math.max(idx - 1, 0);
+    if (items[idx]) items[idx].classList.add("active");
+  } else if (e.key === "Enter") {
+    const active = lista.querySelector(".active");
+    if (active) { e.preventDefault(); active.click(); }
+    else lista.style.display = "none";
+  } else if (e.key === "Escape") {
+    lista.style.display = "none";
+  }
+}
+
+// Cerrar autocomplete al clicar fuera
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#modalProveedor")) document.getElementById("autocompleteList").style.display = "none";
+  if (!e.target.closest("#modalAlbaran")) document.getElementById("autocompleteAlbaranList").style.display = "none";
+});
+
+// ══════════════════════════════════════════════════════════════
+//  PILA DESHACER
+// ══════════════════════════════════════════════════════════════
+function pushUndo(accion) {
+  pilaUndo.push(accion);
+  guardarDatos();
+  actualizarBtnUndo();
+}
+function actualizarBtnUndo() {
+  const btn = document.getElementById("btnUndo");
+  btn.style.display = pilaUndo.length > 0 ? "inline-flex" : "none";
+}
+function abrirModalUndo() {
+  if (!pilaUndo.length) return;
+  document.getElementById("undoDetalle").innerHTML = "<strong>" + pilaUndo[pilaUndo.length-1].descripcion + "</strong>";
+  abrirModal("modalUndo");
+}
+function ejecutarUndo() {
+  if (!pilaUndo.length) return;
+  const accion = pilaUndo.pop();
+  switch (accion.tipo) {
+    case "entrada":
+      movimientos = movimientos.filter(m => m._id !== accion.payload.id);
+      stock[accion.payload.pieza] = Math.max(0, stock[accion.payload.pieza] - accion.payload.cantidad);
+      break;
+    case "salida":
+      movimientos = movimientos.filter(m => m._id !== accion.payload.id);
+      stock[accion.payload.pieza] += accion.payload.cantidad;
+      break;
+    case "entradaMasiva":
+      accion.payload.ids.forEach(id => { movimientos = movimientos.filter(m => m._id !== id); });
+      accion.payload.items.forEach(({pieza, cantidad}) => {
+        stock[pieza] = Math.max(0, stock[pieza] - cantidad);
+      });
+      break;
+    case "addArticulo":
+      delete stock[accion.payload.nombre];
+      break;
+    case "borrarArticulo":
+      stock[accion.payload.nombre] = accion.payload.stockAnterior;
+      break;
+    case "editarNombre":
+      stock[accion.payload.nombreAnterior] = stock[accion.payload.nombreNuevo];
+      delete stock[accion.payload.nombreNuevo];
+      movimientos = movimientos.map(m => m.pieza === accion.payload.nombreNuevo ? {...m, pieza: accion.payload.nombreAnterior} : m);
+      break;
+  }
+  guardarDatos();
+  renderSelectPiezas(); renderTabla(); renderStock();
+  actualizarBtnUndo();
+  cerrarModal("modalUndo");
+  mostrarToast("↩ Deshecho: " + accion.descripcion);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════════════════════
+let toastTimer = null;
+function mostrarToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 3500);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  MODALES GENÉRICOS
+// ══════════════════════════════════════════════════════════════
+function abrirModal(id) {
+  const m = document.getElementById(id);
+  m.style.display = "block"; m.setAttribute("aria-hidden","false");
+}
+function cerrarModal(id) {
+  const m = document.getElementById(id);
+  m.style.display = "none"; m.setAttribute("aria-hidden","true");
+}
+window.onclick = function(e) {
+  ["modalArticulo","modalProveedor","modalEditar","modalUndo","modalAlbaran"].forEach(id => {
+    const m = document.getElementById(id);
+    if (e.target === m) {
+      cerrarModal(id);
+      if (id === "modalProveedor") entradaPendiente = null;
+      if (id === "modalEditar")    articuloEditando = null;
+    }
+  });
+};
+
+// ══════════════════════════════════════════════════════════════
+//  SELECT PIEZAS
+// ══════════════════════════════════════════════════════════════
+function renderSelectPiezas() {
+  const sel = document.getElementById("pieza");
+  sel.innerHTML = "";
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = "— Selecciona una pieza —"; ph.disabled = true; ph.selected = true;
+  sel.appendChild(ph);
+  Object.keys(stock).sort().forEach(pieza => {
+    const opt = document.createElement("option");
+    opt.value = pieza; opt.textContent = `${pieza} (${stock[pieza]})`;
+    sel.appendChild(opt);
+  });
+}
+
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
+
+// ══════════════════════════════════════════════════════════════
+//  AÑADIR ARTÍCULO
+// ══════════════════════════════════════════════════════════════
+function abrirModalArticulo() {
+  document.getElementById("nuevoNombre").value = "";
+  abrirModal("modalArticulo");
+  setTimeout(() => document.getElementById("nuevoNombre").focus(), 100);
+}
+function confirmarAddArticulo() {
+  const nombre = document.getElementById("nuevoNombre").value.trim();
+  if (!nombre) { alert("Introduce el nombre del artículo."); return; }
+  if (stock.hasOwnProperty(nombre)) { alert("El artículo ya existe."); return; }
+  stock[nombre] = 0;
+  pushUndo({ descripcion: `Añadir artículo "${nombre}"`, tipo: "addArticulo", payload: { nombre } });
+  guardarDatos(); renderSelectPiezas(); renderStock();
+  cerrarModal("modalArticulo");
+  mostrarToast(`Artículo "${nombre}" añadido.`);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EDITAR NOMBRE
+// ══════════════════════════════════════════════════════════════
+function abrirModalEditar(nombreActual) {
+  articuloEditando = nombreActual;
+  document.getElementById("editarNombre").value = nombreActual;
+  abrirModal("modalEditar");
+  setTimeout(() => document.getElementById("editarNombre").focus(), 100);
+}
+function confirmarEditar() {
+  const nuevoNombre = document.getElementById("editarNombre").value.trim();
+  if (!nuevoNombre) { alert("El nombre no puede estar vacío."); return; }
+  if (nuevoNombre === articuloEditando) { cerrarModal("modalEditar"); return; }
+  if (stock.hasOwnProperty(nuevoNombre)) { alert("Ya existe un artículo con ese nombre."); return; }
+  const nombreAnterior = articuloEditando;
+  pushUndo({ descripcion: `Renombrar "${nombreAnterior}" → "${nuevoNombre}"`, tipo: "editarNombre", payload: { nombreAnterior, nombreNuevo: nuevoNombre } });
+  stock[nuevoNombre] = stock[nombreAnterior]; delete stock[nombreAnterior];
+  movimientos = movimientos.map(m => m.pieza === nombreAnterior ? {...m, pieza: nuevoNombre} : m);
+  guardarDatos(); renderSelectPiezas(); renderStock(); renderTabla();
+  cerrarModal("modalEditar");
+  mostrarToast(`Renombrado a "${nuevoNombre}".`);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  REGISTRO MANUAL
+// ══════════════════════════════════════════════════════════════
+function registrarMovimiento(tipo) {
+  const empleado = document.getElementById("empleado").value.trim();
+  const fecha    = document.getElementById("fecha").value;
+  const pieza    = document.getElementById("pieza").value;
+  const cantidad = parseInt(document.getElementById("cantidad").value, 10);
+  if (!empleado || !fecha || !pieza || !cantidad || cantidad <= 0) { alert("Completa empleado, fecha, pieza y cantidad."); return; }
+  if (!stock.hasOwnProperty(pieza)) stock[pieza] = 0;
+  if (tipo === "salida") {
+    if (stock[pieza] < cantidad) { alert("No hay stock suficiente."); return; }
+    stock[pieza] -= cantidad;
+    const id = uid();
+    movimientos.unshift({ _id: id, fecha, empleado, tipo, pieza, cantidad, stockFinal: stock[pieza], proveedor: "" });
+    pushUndo({ descripcion: `Salida: ${cantidad} ud. de "${pieza}" — ${empleado} (${fecha})`, tipo: "salida", payload: { id, pieza, cantidad } });
+    guardarDatos(); renderTabla(); renderStock(); renderSelectPiezas(); limpiarCampos(false);
+    mostrarToast(`Salida: ${cantidad} ud. de "${pieza}".`);
+  } else {
+    entradaPendiente = { empleado, fecha, pieza, cantidad };
+    document.getElementById("inputProveedor").value = "";
+    document.getElementById("autocompleteList").style.display = "none";
+    // Mostrar sugerencias si hay proveedores previos
+    setTimeout(() => filtrarAutocomplete(), 80);
+    abrirModal("modalProveedor");
+    setTimeout(() => document.getElementById("inputProveedor").focus(), 120);
+  }
+}
+
+function cerrarModalProveedor() { cerrarModal("modalProveedor"); entradaPendiente = null; }
+function confirmarEntrada() {
+  if (!entradaPendiente) return;
+  const proveedor = document.getElementById("inputProveedor").value.trim() || "Sin proveedor";
+  const { empleado, fecha, pieza, cantidad } = entradaPendiente;
+  stock[pieza] += cantidad;
+  const id = uid();
+  movimientos.unshift({ _id: id, fecha, empleado, tipo: "entrada", pieza, cantidad, stockFinal: stock[pieza], proveedor });
+  pushUndo({ descripcion: `Entrada: ${cantidad} ud. de "${pieza}" — prov. ${proveedor} — ${empleado} (${fecha})`, tipo: "entrada", payload: { id, pieza, cantidad } });
+  guardarDatos(); renderTabla(); renderStock(); renderSelectPiezas(); limpiarCampos(false);
+  cerrarModalProveedor();
+  mostrarToast(`Entrada: ${cantidad} ud. de "${pieza}" (${proveedor}).`);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BORRAR ARTÍCULO
+// ══════════════════════════════════════════════════════════════
+function borrarArticulo() {
+  const pieza = document.getElementById("pieza").value;
+  if (!pieza) { alert("Selecciona un artículo para borrar."); return; }
+  const codigo = prompt(`Supervisor: introduce el código para borrar "${pieza}":`, "");
+  if (codigo === null) { alert("Cancelado."); return; }
+  if (codigo !== "9335") { alert("Código incorrecto."); return; }
+  if (!confirm(`¿Marcar "${pieza}" como obsoleto? Se elimina del stock activo; el historial se conserva.`)) { alert("Cancelado."); return; }
+  const stockAnterior = stock[pieza];
+  pushUndo({ descripcion: `Borrar artículo "${pieza}" (stock: ${stockAnterior})`, tipo: "borrarArticulo", payload: { nombre: pieza, stockAnterior } });
+  delete stock[pieza];
+  guardarDatos(); renderSelectPiezas(); renderTabla(); renderStock(); limpiarCampos(false);
+  mostrarToast(`"${pieza}" marcado como obsoleto. ↩ Deshacer disponible.`);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  LECTOR DE ALBARÁN IA
+// ══════════════════════════════════════════════════════════════
+function abrirModalAlbaran() {
+  fotoAlbaranBase64 = null;
+  document.getElementById("previewAlbaran").style.display = "none";
+  document.getElementById("previewAlbaran").src = "";
+  document.getElementById("btnAnalizarAlbaran").style.display = "none";
+  document.getElementById("inputFotoAlbaran").value = "";
+  document.getElementById("pasoSubida").style.display = "block";
+  document.getElementById("pasoAnalizando").style.display = "none";
+  document.getElementById("pasoResultados").style.display = "none";
+  document.getElementById("dropZone").classList.remove("drag-over");
+  abrirModal("modalAlbaran");
+}
+function cerrarModalAlbaran() { cerrarModal("modalAlbaran"); }
+
+function onDropAlbaran(e) {
+  e.preventDefault();
+  document.getElementById("dropZone").classList.remove("drag-over");
+  const file = e.dataTransfer.files[0];
+  if (file) procesarFotoAlbaran(file);
+}
+function onSeleccionarFoto(e) {
+  const file = e.target.files[0];
+  if (file) procesarFotoAlbaran(file);
+}
+function procesarFotoAlbaran(file) {
+  if (!file.type.startsWith("image/")) { alert("Selecciona una imagen (JPG, PNG, WEBP)."); return; }
+  if (file.size > 10 * 1024 * 1024) { alert("La imagen supera los 10 MB."); return; }
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    fotoAlbaranBase64 = ev.target.result.split(",")[1];
+    const preview = document.getElementById("previewAlbaran");
+    preview.src = ev.target.result; preview.style.display = "block";
+    document.getElementById("btnAnalizarAlbaran").style.display = "block";
+  };
+  reader.readAsDataURL(file);
+}
+
+async function analizarAlbaran() {
+  if (!fotoAlbaranBase64) return;
+  document.getElementById("pasoSubida").style.display = "none";
+  document.getElementById("pasoAnalizando").style.display = "block";
+
+  const referencias = Object.keys(stock).join("\n");
+  const prompt = `Eres un asistente de inventario de una empresa de composites. Analiza esta imagen de un albarán de entrega y extrae toda la información relevante.
+
+Las referencias de stock existentes en el sistema son:
+${referencias}
+
+Por favor, devuelve ÚNICAMENTE un JSON válido (sin texto adicional, sin bloques de código) con esta estructura exacta:
+{
+  "proveedor": "nombre del proveedor si aparece o null",
+  "fecha": "fecha del albarán en formato YYYY-MM-DD si aparece o null",
+  "items": [
+    {
+      "descripcion": "descripción exacta del artículo en el albarán",
+      "cantidad": número,
+      "referenciaCoincide": "nombre exacto de la referencia del sistema que mejor coincide o null si no coincide"
+    }
+  ]
+}
+
+Intenta hacer coincidir cada artículo del albarán con la referencia más cercana del sistema. Si no hay coincidencia clara, pon null en referenciaCoincide.`;
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1000,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: fotoAlbaranBase64 } },
+            { type: "text", text: prompt }
+          ]
+        }]
+      })
+    });
+    const data = await response.json();
+    const texto = data.content.map(b => b.text || "").join("");
+    const clean = texto.replace(/```json|```/g,"").trim();
+    const resultado = JSON.parse(clean);
+    mostrarResultadosAlbaran(resultado);
+  } catch (err) {
+    document.getElementById("pasoAnalizando").style.display = "none";
+    document.getElementById("pasoSubida").style.display = "block";
+    alert("Error al analizar el albarán. Comprueba la conexión e inténtalo de nuevo.\n\nDetalle: " + err.message);
+  }
+}
+
+function mostrarResultadosAlbaran(resultado) {
+  document.getElementById("pasoAnalizando").style.display = "none";
+  document.getElementById("pasoResultados").style.display = "block";
+
+  // Info albarán
+  const info = [];
+  if (resultado.proveedor) info.push(`<strong>Proveedor detectado:</strong> ${resultado.proveedor}`);
+  if (resultado.fecha)     info.push(`<strong>Fecha detectada:</strong> ${resultado.fecha}`);
+  document.getElementById("albaranInfo").innerHTML = info.length ? info.join(" &nbsp;|&nbsp; ") : "No se detectó proveedor ni fecha en el albarán.";
+
+  // Autorellenar campos
+  if (resultado.proveedor) document.getElementById("albaranProveedor").value = resultado.proveedor;
+  if (resultado.fecha)     document.getElementById("albaranFecha").value = resultado.fecha;
+
+  // Tabla artículos
+  const tbody = document.getElementById("albaranFilas");
+  tbody.innerHTML = "";
+  (resultado.items || []).forEach((item, i) => {
+    const coincide = item.referenciaCoincide && stock.hasOwnProperty(item.referenciaCoincide);
+    const nombre = coincide ? item.referenciaCoincide : item.descripcion;
+    const tr = document.createElement("tr");
+    if (!coincide) tr.classList.add("albaran-fila-nocoincide");
+    tr.innerHTML = `
+      <td><input type="checkbox" id="chk_${i}" checked /></td>
+      <td>
+        <input type="text" id="art_${i}" value="${nombre.replace(/"/g,'&quot;')}" style="padding:6px 8px;font-size:13px;width:100%;" />
+        ${!coincide ? '<span class="tag-nocoincide">⚠ sin coincidencia</span>' : ''}
+      </td>
+      <td><input type="number" id="qty_${i}" value="${item.cantidad}" min="1" /></td>
+      <td style="font-size:12px;color:${coincide?'#16a34a':'#92400e'};">${coincide ? '✔ Referencia reconocida' : '✎ Edita el nombre'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function importarAlbaran() {
+  const proveedor = document.getElementById("albaranProveedor").value.trim() || "Sin proveedor";
+  const empleado  = document.getElementById("albaranEmpleado").value;
+  const fecha     = document.getElementById("albaranFecha").value;
+  if (!empleado) { alert("Selecciona el empleado que recibe el albarán."); return; }
+  if (!fecha)    { alert("Indica la fecha del albarán."); return; }
+
+  const filas = document.getElementById("albaranFilas").querySelectorAll("tr");
+  const ids = [];
+  const itemsUndo = [];
+  let importados = 0;
+
+  filas.forEach((_, i) => {
+    const chk = document.getElementById(`chk_${i}`);
+    if (!chk || !chk.checked) return;
+    const nombre   = document.getElementById(`art_${i}`).value.trim();
+    const cantidad = parseInt(document.getElementById(`qty_${i}`).value, 10);
+    if (!nombre || !cantidad || cantidad <= 0) return;
+    if (!stock.hasOwnProperty(nombre)) stock[nombre] = 0;
+    stock[nombre] += cantidad;
+    const id = uid();
+    movimientos.unshift({ _id: id, fecha, empleado, tipo: "entrada", pieza: nombre, cantidad, stockFinal: stock[nombre], proveedor });
+    ids.push(id);
+    itemsUndo.push({ pieza: nombre, cantidad });
+    importados++;
+  });
+
+  if (importados === 0) { alert("No hay artículos seleccionados para importar."); return; }
+
+  pushUndo({
+    descripcion: `Importación albarán: ${importados} artículos — prov. ${proveedor} — ${empleado} (${fecha})`,
+    tipo: "entradaMasiva",
+    payload: { ids, items: itemsUndo }
+  });
+
+  guardarDatos(); renderTabla(); renderStock(); renderSelectPiezas();
+  cerrarModalAlbaran();
+  mostrarToast(`✅ ${importados} entradas importadas del albarán (${proveedor}).`);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER TABLA
+// ══════════════════════════════════════════════════════════════
+function renderTabla() {
+  const tbody = document.getElementById("tablaMovimientos");
+  tbody.innerHTML = "";
+  const filtro = document.getElementById("buscar").value.toLowerCase();
+  movimientos.forEach(m => {
+    const provTxt = m.proveedor || "";
+    const textoFila = `${m.fecha} ${m.empleado} ${m.tipo} ${m.pieza} ${m.cantidad} ${m.stockFinal} ${provTxt}`.toLowerCase();
+    const tr = document.createElement("tr");
+    if (filtro && !textoFila.includes(filtro)) tr.classList.add("hidden-row");
+    tr.innerHTML = `
+      <td>${m.fecha}</td><td>${m.empleado}</td>
+      <td><span class="badge ${m.tipo==='entrada'?'in':'out'}">${m.tipo}</span></td>
+      <td>${m.pieza}</td><td>${m.cantidad}</td><td>${m.stockFinal}</td>
+      <td>${m.tipo==='entrada'?(provTxt||'—'):'—'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER STOCK
+// ══════════════════════════════════════════════════════════════
+function renderStock() {
+  const div = document.getElementById("stockResumen");
+  div.innerHTML = "";
+  Object.keys(stock).sort().forEach(pieza => {
+    const cantidad = stock[pieza];
+    const item = document.createElement("div");
+    item.className = "stock-item" + (cantidad === 0 ? " sin-stock" : "");
+    const safe = pieza.replace(/\\/g,"\\\\").replace(/'/g,"\\'");
+    item.innerHTML = `
+      <span class="stock-nombre" title="Clic para editar" onclick="abrirModalEditar('${safe}')">${pieza}</span>
+      <span class="stock-cantidad">${cantidad}</span>
+    `;
+    div.appendChild(item);
+  });
+  const sinStock = Object.entries(stock).filter(([,v])=>v===0).map(([k])=>k);
+  document.getElementById("btnNotificar").style.display = sinStock.length > 0 ? "inline-flex" : "none";
+}
+
+// ══════════════════════════════════════════════════════════════
+//  NOTIFICACIÓN
+// ══════════════════════════════════════════════════════════════
+function notificarSupervisor() {
+  const sinStock = Object.entries(stock).filter(([,v])=>v===0).map(([k])=>k);
+  if (!sinStock.length) return;
+  const fecha = new Date().toLocaleDateString("es-ES");
+  const lista = sinStock.map(s=>"  - "+s).join("\n");
+  const asunto = encodeURIComponent("[Prenso Composites] Aviso de falta de stock — "+fecha);
+  const cuerpo = encodeURIComponent("Estimado/a Sergio,\n\nFalta de stock a fecha "+fecha+":\n\n"+lista+"\n\nPor favor, revisa y realiza los pedidos necesarios.\n\nSaludos,\nSistema de Inventario — Prenso Composites");
+  window.location.href = "mailto:sergiogt@prensocomposites.com?subject="+asunto+"&body="+cuerpo;
+}
+
+function filtrarTabla() { renderTabla(); }
+
+function limpiarCampos(resetFecha=true) {
+  document.getElementById("empleado").value = "";
+  document.getElementById("pieza").selectedIndex = 0;
+  document.getElementById("cantidad").value = "";
+  if (resetFecha) document.getElementById("fecha").valueAsDate = new Date();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EXPORTAR EXCEL
+// ══════════════════════════════════════════════════════════════
+function exportarExcel() {
+  const data = movimientos.map(m => ({
+    Fecha: m.fecha, Empleado: m.empleado, Movimiento: m.tipo,
+    Pieza: m.pieza, Cantidad: m.cantidad, "Stock resultante": m.stockFinal,
+    Proveedor: m.tipo==="entrada" ? (m.proveedor||"Sin proveedor") : "—"
+  }));
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Inventario");
+  XLSX.writeFile(wb, "inventario_prenso_composites.xlsx");
+}
+
+// ══════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════
+renderSelectPiezas();
+renderStock();
+renderTabla();
+actualizarBtnUndo();
+</script>
+</body>
+</html>
